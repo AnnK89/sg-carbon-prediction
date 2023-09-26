@@ -189,32 +189,35 @@ class VehicleDataPreprocessingTransformer():
         self.data = BigQueryDataRetriever().retrieve_data(self.table_id)
 
     def clean_data(self):
+        X = self.data
         try:
-            processed_data = self.data.dropna()
-            return processed_data
+            X = X.rename(columns={'string_field_0': 'planning_area'})
+            return X
         except Exception as e:
             print(f"An error occurred while cleaning '{self.table_id}' dataset: {str(e)}")
             return None
 
 
 def combine_clean_data():
-    dfs = []
+    dfs = pd.DataFrame()
 
     # Add electricity consumption data
-    add_dataset_to_list(ElecConsumDataPreprocessingTransformer(), 'electricity', dfs)
+    dfs = add_dataset_to_list(ElecConsumDataPreprocessingTransformer(), 'electricity', dfs)
 
     # Add gas consumption data
-    add_dataset_to_list(GasConsumDataPreprocessingTransformer(), 'gas', dfs)
+    dfs = add_dataset_to_list(GasConsumDataPreprocessingTransformer(), 'gas', dfs)
 
     # Add population consumption data
-    add_dataset_to_list(PopulationDataPreprocessingTransformer(), 'population', dfs)
+    dfs = add_dataset_to_list(PopulationDataPreprocessingTransformer(), 'population', dfs)
 
     # Add vehicle consumption data
-    #add_dataset_to_list(VehicleDataPreprocessingTransformer(), 'vehicle', dfs)
+    dfs = add_dataset_to_list(VehicleDataPreprocessingTransformer(), 'vehicle', dfs)
 
     return dfs
 
+
+
 def add_dataset_to_list(transformer, data_type, dfs):
     df = transformer.clean_data()
-    df['typeofdata'] = data_type
-    dfs.append(df)
+    df['planning_area'] = df['planning_area'] + f'_{data_type}'
+    return pd.concat([dfs, df])
