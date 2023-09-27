@@ -172,7 +172,7 @@ class PopulationDataPreprocessingTransformer():
 
 class VehicleDataPreprocessingTransformer():
     """
-    Retrieves Datagov vehicle data from BigQuery and transform into the required format.
+    Retrieves OneMap vehicle data from BigQuery and transform into the required format.
 
     Parameters
     -------
@@ -216,6 +216,9 @@ def combine_clean_data():
 
     # Add empty row for missing planning_area
     dfs = add_missing_planning_area(dfs)
+
+    # Clean combined data
+    dfs = clean_combined_data(dfs)
 
     return dfs
 
@@ -268,3 +271,7 @@ def add_missing_planning_area(df):
     merged_df = pd.merge(all_df, df, on='planning_area', how='left')
 
     return merged_df
+
+def clean_combined_data(df):
+    df[df.columns[1:]] = df[df.columns[1:]].fillna(0).astype(int)
+    return df
