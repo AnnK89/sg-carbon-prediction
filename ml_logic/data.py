@@ -172,7 +172,7 @@ class PopulationDataPreprocessingTransformer():
 
 class VehicleDataPreprocessingTransformer():
     """
-    Retrieves Datagov vehicle data from BigQuery and transform into the required format.
+    Retrieves OneMap vehicle data from BigQuery and transform into the required format.
 
     Parameters
     -------
@@ -191,7 +191,8 @@ class VehicleDataPreprocessingTransformer():
     def clean_data(self):
         X = self.data
         try:
-            X = X.rename(columns={'string_field_0': 'planning_area'})
+            X = X[(X['year'] >= params.YEAR_START) & (X['year'] <= params.YEAR_END)]
+            X = X.pivot(index='planning_area', columns='year', values='vehicle').reset_index()
             return X
         except Exception as e:
             print(f"An error occurred while cleaning '{self.table_id}' dataset: {str(e)}")
@@ -199,25 +200,78 @@ class VehicleDataPreprocessingTransformer():
 
 
 def combine_clean_data():
+    """
+    Creates a combined Dataframe for all the available data categories and adds empty rows for any missing planning area.
+
+    Returns
+    ------
+    dataframe
+
+    """
     dfs = pd.DataFrame()
 
-    # Add electricity consumption data
-    dfs = add_dataset_to_list(ElecConsumDataPreprocessingTransformer(), 'electricity', dfs)
+    # Create combined dataset
+    for data_category in params.TRANSFORMER_MAP.keys():
+        dfs = add_dataset_to_list(data_category, dfs)
 
-    # Add gas consumption data
-    dfs = add_dataset_to_list(GasConsumDataPreprocessingTransformer(), 'gas', dfs)
+    # Add empty row for missing planning_area
+    dfs = add_missing_planning_area(dfs)
 
-    # Add population consumption data
-    dfs = add_dataset_to_list(PopulationDataPreprocessingTransformer(), 'population', dfs)
-
-    # Add vehicle consumption data
-    dfs = add_dataset_to_list(VehicleDataPreprocessingTransformer(), 'vehicle', dfs)
+    # Clean combined data
+    dfs = clean_combined_data(dfs)
 
     return dfs
 
+def add_dataset_to_list(data_category, dfs):
+    """
+    Appends a DataFrame of a specific data category to an existing DataFrame and adds the data category as a suffix to each planning area.
 
+    Parameters
+    -------
+    data_category : str
+        Data category to be added.
+    dfs : dataframe
+        DataFrame to which the data will be appended.
 
-def add_dataset_to_list(transformer, data_type, dfs):
+    Returns
+    ------
+    dataframe
+
+    """
+    transformer_class = globals()[params.TRANSFORMER_MAP.get(data_category)]
+    transformer = transformer_class()
+
     df = transformer.clean_data()
-    df['planning_area'] = df['planning_area'] + f'_{data_type}'
+    df['planning_area'] = df['planning_area'] + f'_{data_category}'
     return pd.concat([dfs, df])
+
+def get_transformer(data_category):
+    return params.TRANSFORMER_MAP.get(data_category)
+
+def add_missing_planning_area(df):
+    """
+    Adds missing planning areas to an existing combined DataFrame.
+
+    Parameters
+    -------
+    dfs : dataframe
+        Existing combined DataFrame for all data categories with all the unique planning area.
+
+    Returns
+    ------
+    dataframe
+
+    """
+    all_df = [{'planning_area': f'{planning_area}_{data_category}'}
+                for planning_area in params.PLANNING_AREA
+                for data_category in params.TRANSFORMER_MAP.keys()]
+
+    all_df = pd.DataFrame(all_df)
+
+    merged_df = pd.merge(all_df, df, on='planning_area', how='left')
+
+    return merged_df
+
+def clean_combined_data(df):
+    df[df.columns[1:]] = df[df.columns[1:]].fillna(0).astype(int)
+    return df
