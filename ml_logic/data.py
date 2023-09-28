@@ -274,4 +274,5 @@ def add_missing_planning_area(df):
 
 def clean_combined_data(df):
     df[df.columns[1:]] = df[df.columns[1:]].fillna(0).astype(int)
+    df = df.sort_values(by='planning_area')
     return df
