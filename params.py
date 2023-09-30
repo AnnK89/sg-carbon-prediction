@@ -1,6 +1,8 @@
+import os
 ##################  VARIABLES  ##################
-PROJECT_ID = 'le-wagon-bootcamp-396204'
-DATASET_ID = 'sgcarbonprediction'
+PROJECT_ID = os.environ.get("PROJECT_ID")
+DATASET_ID = os.environ.get("DATASET_ID")
+LOCAL_DATA_PATH = os.path.join(os.path.expanduser('~'), ".lewagon", "carbon", "data")
 
 # Electricity : Input value (in KWh/Yr) X 0.85 (Emission Factor) =  Output value in (Kg of CO2)
 ELEC_EMISSION_FACTOR = 0.85
