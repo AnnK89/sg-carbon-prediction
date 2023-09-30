@@ -86,7 +86,7 @@ def evaluate_model(
         model: Model,
         X: np.ndarray,
         y: np.ndarray,
-        batch_size=64
+        batch_size = 55
     ) -> Tuple[Model, dict]:
     """
     Evaluate trained model performance on the dataset
@@ -101,15 +101,15 @@ def evaluate_model(
     metrics = model.evaluate(
         x=X,
         y=y,
-        batch_size=batch_size,
         verbose=0,
+        batch_size=batch_size,
         # callbacks=None,
         return_dict=True
     )
 
-    loss = metrics["loss"]
+    accuracy = metrics["accuracy"]
     mae = metrics["mae"]
 
-    print(f"✅ Model evaluated, MAE: {round(mae, 2)}")
+    print(f"✅ Model evaluated, MAE: {round(mae, 2)} and Accuracy : {round(accuracy, 2)}")
 
     return metrics
