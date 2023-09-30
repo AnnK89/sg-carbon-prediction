@@ -5,9 +5,11 @@ from colorama import Fore, Style
 from typing import Tuple
 
 import tensorflow as tf
+from tensorflow.keras import Model,optimizers
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Model, LSTM, Dense, SimpleRNN, Reshape
+from tensorflow.keras.layers import LSTM, Dense, SimpleRNN, Reshape
 from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.model_selection import train_test_split
 
 from ml_logic import data
 
@@ -17,37 +19,6 @@ start = time.perf_counter()
 
 end = time.perf_counter()
 print(f"\n✅ TensorFlow loaded ({round(end - start, 2)}s)")
-
-def preproc_train_data():
-    df = data.combine_clean_data()
-    num_years = 5
-    # Use previous years except latest years for sequence length
-    carbon_data = df.iloc[:, 1:-num_years].values # Exclude the 'City' column
-    target_data = df.iloc[:,-num_years:].values # last year as target
-
-    # if sequence_length > carbon_data.shape[1] - 1:
-    #     sequence_length = carbon_data.shape[1] - 1
-
-    X = []  # Input features
-    y = []  # Target values
-
-    # Create input features and target values
-    for i in range(0,len(carbon_data),4): #4 parameters per planning area
-        X.append(carbon_data[i:i+4].T)
-        y.append(target_data[i:i+4].T)
-
-    X = np.array(X)
-    y = np.array(y)
-
-    # Split data into training and testing sets
-    #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    split = int(len(X) *  0.8)
-    X_train = X[:split]
-    X_test = X[split:]
-    y_train = y[:split]
-    y_test = y[split:]
-
-    return X_train,X_test,y_train,y_test
 
 
 def initialize_model(input_shape: tuple) -> Model:
@@ -74,8 +45,9 @@ def compile_model(model: Model, learning_rate=0.0005) -> Model:
     """
     Compile the Neural Network
     """
+    optimizer = optimizers.Adam(learning_rate=learning_rate)
     model.compile(loss='mse',
-                optimizer='adam',
+                optimizer=optimizer,
                 metrics=['mae','accuracy'])
 
     print("✅ Model compiled")
@@ -105,7 +77,7 @@ def train_model(
         verbose=0
     )
 
-    print(f"✅ Model trained on {len(X)} rows with min val MAE: {round(np.min(history.history['val_mae']), 2)}")
+    print(f"✅ Model trained on {len(X)} rows with min val mae and accuracy: {round(np.min(history.history['mae']), 2)},{round(np.max(history.history['accuracy']), 2)}")
 
     return model, history
 

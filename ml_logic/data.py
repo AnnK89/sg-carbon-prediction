@@ -1,5 +1,6 @@
 import params
 import pandas as pd
+import numpy as np
 
 from google.cloud import bigquery
 
@@ -217,7 +218,7 @@ def combine_clean_data():
     # Add empty row for missing planning_area
     dfs = add_missing_planning_area(dfs)
 
-    # Clean combined data
+    # Clean combined data and process to X and y
     dfs = clean_combined_data(dfs)
 
     return dfs
@@ -275,4 +276,23 @@ def add_missing_planning_area(df):
 def clean_combined_data(df):
     df[df.columns[1:]] = df[df.columns[1:]].fillna(0).astype(int)
     df = df.sort_values(by='planning_area')
+    num_years = 5
+    # Use previous years except latest years for sequence length
+    carbon_data = df.iloc[:, 1:-num_years].values # Exclude the 'City' column
+    target_data = df.iloc[:,-num_years:].values # last year as target
+
+    # if sequence_length > carbon_data.shape[1] - 1:
+    #     sequence_length = carbon_data.shape[1] - 1
+
+    X = []  # Input features
+    y = []  # Target values
+
+    # Create input features and target values
+    for i in range(0,len(carbon_data),4): #4 parameters per planning area
+        X.append(carbon_data[i:i+4].T)
+        y.append(target_data[i:i+4].T)
+
+    X = np.array(X)
+    y = np.array(y)
+
     return df
