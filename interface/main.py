@@ -8,8 +8,9 @@ from dateutil.parser import parse
 from google.cloud import bigquery
 from params import *
 from ml_logic import data
+from ml_logic import model_carbon
 
-def preprocess(min_date:str = '2009-01-01', max_date:str = '2015-01-01') -> None:
+def preprocess() -> None:
     """
     - Query the raw dataset from Le Wagon's BigQuery dataset
     - Cache query result as a local CSV if it doesn't exist locally
@@ -21,7 +22,7 @@ def preprocess(min_date:str = '2009-01-01', max_date:str = '2015-01-01') -> None
     print(Fore.MAGENTA + "\n ⭐️ Use case: preprocess" + Style.RESET_ALL)
 
     # Query data from BigQuery using `get_data_with_cache` and combined for all parameters
-    df = data.clean_combined_data()
+    df = data.combine_clean_data()
 
     data.load_data_to_bq(
     df,
@@ -34,10 +35,9 @@ def preprocess(min_date:str = '2009-01-01', max_date:str = '2015-01-01') -> None
     print("✅ preprocess() done \n")
 
 def train(
-        num_years = 5, # 0.02 represents ~ 1 month of validation data on a 2009-2015 train set
+        num_years = 5, # predicting 5 years
         learning_rate=0.0005,
-        batch_size = 256,
-        patience = 2
+        patience = 5
     ) -> float:
 
     print(Fore.MAGENTA + "\n⭐️ Use case: train" + Style.RESET_ALL)
@@ -50,6 +50,7 @@ def train(
     query = f"""
         SELECT *
         FROM {PROJECT_ID}.{DATASET_ID}.processed_df
+        ORDER BY planning_area ASC
     """
     data_processed_cache_path = Path(LOCAL_DATA_PATH).joinpath("processed_df.csv")
     df = data.get_data_with_cache(
@@ -86,3 +87,73 @@ def train(
     X_test = X[split:]
     y_train = y[:split]
     y_test = y[split:]
+
+    model = data.load_model()
+
+    if model is None:
+        model = model_carbon.initialize_model(input_shape=X_train.shape[1:])
+
+    model = model_carbon.compile_model(model, learning_rate=learning_rate)
+    model, history = model_carbon.train_model(
+        model, X_train, y_train,
+        patience=patience,
+    )
+
+    mae = np.min(history.history['mae'])
+    accuracy = np.max(history.history['accuracy'])
+
+    params = dict(
+        context="train",
+        row_count=len(X_train),
+    )
+
+    # Save results on the hard drive using taxifare.ml_logic.registry
+    data.save_results(params=params, metrics={'mae' : mae, 'accuracy' : accuracy})
+
+    # Save model weight on the hard drive (and optionally on GCS too!)
+    data.save_model(model=model)
+
+    # The latest model should be moved to staging
+    # data.mlflow_transition_model(current_stage="None", new_stage="Staging")
+
+    print("✅ train() done \n")
+
+    model_carbon.evaluate_model(model,X_test,y_test)
+
+    return mae,accuracy
+
+def pred():
+    print(Fore.MAGENTA + "\n ⭐️ Use case: pred" + Style.RESET_ALL)
+
+    query = f"""
+        SELECT *
+        FROM {PROJECT_ID}.{DATASET_ID}.processed_df
+        ORDER BY planning_area ASC
+    """
+    data_processed_cache_path = Path(LOCAL_DATA_PATH).joinpath("processed_df.csv")
+    df = data.get_data_with_cache(
+        gcp_project=PROJECT_ID,
+        query=query,
+        cache_path=data_processed_cache_path,
+        data_has_header=False
+    )
+    model = data.load_model()
+
+    carbon_data = df.iloc[:, -12:].values
+
+    X_pred=[]
+    for i in range(0,len(carbon_data),4): #4 parameters per planning area
+        X_pred.append(carbon_data[i:i+4].T)
+
+    X_pred = np.array(X_pred)
+
+    y_pred = model.predict(X_pred)
+
+    print(f"✅ pred() done")
+
+    return y_pred
+
+if __name__ == '__main__':
+    preprocess()
+    train()
+    pred()
