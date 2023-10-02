@@ -16,6 +16,9 @@ from mlflow.tracking import MlflowClient
 from google.cloud import bigquery, storage
 from params import *
 
+from google.auth.exceptions import DefaultCredentialsError
+from google.cloud.exceptions import NotFound
+
 class BigQueryDataRetriever():
     """
     Retrieves dataset from BigQuery.
@@ -30,12 +33,14 @@ class BigQueryDataRetriever():
     dataframe
 
     """
-    def retrieve_data(self, table_id):
+    def retrieve_data(self, table_id, order_by=None):
         try:
             query = f"""
                 SELECT *
                 FROM {params.PROJECT_ID}.{params.DATASET_ID}.{table_id}
                 """
+            if order_by:
+                query += f" ORDER BY {order_by} ASC"
 
             client = bigquery.Client()
             query_job = client.query(query)
@@ -290,31 +295,14 @@ def clean_combined_data(df):
     df = df.sort_values(by='planning_area')
     return df
 
-def load_data_to_bq(
-        data: pd.DataFrame,
-        gcp_project:str,
-        bq_dataset:str,
-        table: str,
-        truncate: bool
-    ) -> None:
+def load_data_to_bq(data: pd.DataFrame, truncate: bool) -> None:
     """
     - Save the DataFrame to BigQuery
     - Empty the table beforehand if `truncate` is True, append otherwise
     """
 
     assert isinstance(data, pd.DataFrame)
-    full_table_name = f"{gcp_project}.{bq_dataset}.{table}"
-    print(Fore.BLUE + f"\nSave data to BigQuery @ {full_table_name}...:" + Style.RESET_ALL)
-
-    # Load data onto full_table_name
-
-    # 🎯 HINT for "*** TypeError: expected bytes, int found":
-    # After preprocessing the data, your original column names are gone (print it to check),
-    # so ensure that your column names are *strings* that start with either
-    # a *letter* or an *underscore*, as BQ does not accept anything else
-
-    # TODO: simplify this solution if possible, but students may very well choose another way to do it
-    # We don't test directly against their own BQ tables, but only the result of their query
+    full_table_name = f"{params.PROJECT_ID}.{params.DATASET_ID}.{params.PROCESSED_TABLE_ID}"
     data.columns = [f"_{column}" if not str(column)[0].isalpha() and not str(column)[0] == "_" else str(column) for column in data.columns]
 
     client = bigquery.Client()
@@ -323,222 +311,54 @@ def load_data_to_bq(
     write_mode = "WRITE_TRUNCATE" if truncate else "WRITE_APPEND"
     job_config = bigquery.LoadJobConfig(write_disposition=write_mode)
 
-    print(f"\n{'Write' if truncate else 'Append'} {full_table_name} ({data.shape[0]} rows)")
-
     # Load data
     job = client.load_table_from_dataframe(data, full_table_name, job_config=job_config)
-    result = job.result()  # wait for the job to complete
+    result = job.result()
 
     print(f"✅ Data saved to bigquery, with shape {data.shape}")
 
-def get_data_with_cache(
-        gcp_project:str,
-        query:str,
-        cache_path:Path,
-        data_has_header=True
-    ) -> pd.DataFrame:
+def get_data_from_bq() -> pd.DataFrame:
     """
-    Retrieve `query` data from BigQuery, or from `cache_path` if the file exists
-    Store at `cache_path` if retrieved from BigQuery for future use
+    - Load data from BigQuery server
     """
-    if cache_path.is_file():
-        print(Fore.BLUE + "\nLoad data from local CSV..." + Style.RESET_ALL)
-        df = pd.read_csv(cache_path, header='infer' if data_has_header else None)
-    else:
-        print(Fore.BLUE + "\nLoad data from BigQuery server..." + Style.RESET_ALL)
-        client = bigquery.Client(project=gcp_project)
-        query_job = client.query(query)
-        result = query_job.result()
-        df = result.to_dataframe()
-
-        # Store as CSV if the BQ query returned at least one valid line
-        if df.shape[0] > 1:
-            df.to_csv(cache_path, header=data_has_header, index=False)
+    df = BigQueryDataRetriever().retrieve_data(table_id=params.PROCESSED_TABLE_ID, order_by='planning_area')
 
     print(f"✅ Data loaded, with shape {df.shape}")
 
     return df
 
+def split_train_test_data(df: pd.DataFrame) -> tuple[np.array, np.array, np.array, np.array]:
+    num_test_years = params.TEST_END - params.TEST_START + 1
+    carbon_data = df.iloc[:, 1:-num_test_years].values
+    target_data = df.iloc[:,-num_test_years:].values
 
-def save_model(model) -> None:
-    """
-    Persist trained model locally on the hard drive at f"{LOCAL_REGISTRY_PATH}/models/{timestamp}.h5"
-    - if MODEL_TARGET='gcs', also persist it in your bucket on GCS at "models/{timestamp}.h5" --> unit 02 only
-    - if MODEL_TARGET='mlflow', also persist it on MLflow instead of GCS (for unit 0703 only) --> unit 03 only
-    """
+    X = []  # Input features
+    y = []  # Target values
 
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    # Create input features and target values
+    for i in range(0,len(carbon_data),len(params.TRANSFORMER_MAP)):
+        X.append(carbon_data[i:i+len(params.TRANSFORMER_MAP)].T)
+        y.append(target_data[i:i+len(params.TRANSFORMER_MAP)].T)
 
-    # Save model locally
-    folder_path = os.path.join(LOCAL_REGISTRY_PATH, "models")
-    if os.path.isdir(folder_path):
-        model_path = os.path.join(folder_path, f"{timestamp}.h5")
-        model.save(model_path)
-    else:
-        os.mkdir(folder_path)
-        model_path = os.path.join(folder_path, f"{timestamp}.h5")
-        model.save(model_path)
+    X = np.array(X).astype(np.float32)
+    y = np.array(y).astype(np.float32)
 
-    print("✅ Model saved to local machine")
+    split = int(len(X) *  0.8)
+    X_train = X[:split]
+    X_test = X[split:]
+    y_train = y[:split]
+    y_test = y[split:]
 
-    if MODEL_TARGET == "gcs":
-        # 🎁 We give you this piece of code as a gift. Please read it carefully! Add a breakpoint if needed!
-
-        model_filename = model_path.split("/")[-1] # e.g. "20230208-161047.h5" for instance
-        client = storage.Client()
-        bucket = client.bucket(BUCKET_NAME)
-        blob = bucket.blob(f"models/{model_filename}")
-        blob.upload_from_filename(model_path)
-
-        print("✅ Model saved to GCS")
-
-        return None
-
-    # mlflow.tensorflow.log_model(
-    #         model=model,
-    #         artifact_path="model",
-    #         registered_model_name=MLFLOW_MODEL_NAME
-    #     )
-
-    # print("✅ Model saved to MLflow")
-
-    return None
-
-def save_results(params: dict, metrics: dict) -> None:
-    """
-    Persist params & metrics locally on the hard drive at
-    "{LOCAL_REGISTRY_PATH}/params/{current_timestamp}.pickle"
-    "{LOCAL_REGISTRY_PATH}/metrics/{current_timestamp}.pickle"
-    - (unit 03 only) if MODEL_TARGET='mlflow', also persist them on MLflow
-    """
-
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-
-    # Save params locally
-    if params is not None:
-        folder_path = os.path.join(LOCAL_REGISTRY_PATH, "params")
-        if os.path.isdir(folder_path):
-            params_path = os.path.join(folder_path, timestamp + ".pickle")
-            with open(params_path, "wb") as file:
-                pickle.dump(params, file)
-        else:
-            os.mkdir(folder_path)
-            params_path = os.path.join(folder_path, timestamp + ".pickle")
-            with open(params_path, "wb") as file:
-                pickle.dump(params, file)
-
-    # Save metrics locally
-    if metrics is not None:
-        folder_path = os.path.join(LOCAL_REGISTRY_PATH, "metrics")
-        if os.path.isdir(folder_path):
-            metrics_path = os.path.join(folder_path, timestamp + ".pickle")
-            with open(metrics_path, "wb") as file:
-                pickle.dump(metrics, file)
-        else:
-            os.mkdir(folder_path)
-            metrics_path = os.path.join(folder_path, timestamp + ".pickle")
-            with open(metrics_path,"wb") as file:
-                pickle.dump(metrics, file)
-
-    print("✅ Results saved locally")
-    # if params is not None:
-    #     mlflow.log_params(params)
-    # if metrics is not None:
-    #     mlflow.log_metrics(metrics)
-    # print("✅ Results saved on MLflow")
+    return X_train, X_test, y_train, y_test
 
 
-def load_model(stage = "production"):
-
-    if MODEL_TARGET == "local":
-
-        print(Fore.BLUE + f"\nLoad latest model from local registry..." + Style.RESET_ALL)
-
-        # Get the latest model version name by the timestamp on disk
-        local_model_directory = os.path.join(LOCAL_REGISTRY_PATH, "models")
-        local_model_paths = glob.glob(f"{local_model_directory}/*")
-
-        if not local_model_paths:
-            return None
-
-        most_recent_model_path_on_disk = sorted(local_model_paths)[-1]
-
-        print(Fore.BLUE + f"\nLoad latest model from disk..." + Style.RESET_ALL)
-
-        latest_model = keras.models.load_model(most_recent_model_path_on_disk)
-
-        print("✅ Model loaded from local disk")
-
-        return latest_model
-
-    elif MODEL_TARGET == "gcs":
-        # 🎁 We give you this piece of code as a gift. Please read it carefully! Add a breakpoint if needed!
-        print(Fore.BLUE + f"\nLoad latest model from GCS..." + Style.RESET_ALL)
-
-        client = storage.Client()
-        blobs = list(client.get_bucket(BUCKET_NAME).list_blobs(prefix="model"))
-
-        try:
-            latest_blob = max(blobs, key=lambda x: x.updated)
-            latest_model_path_to_save = os.path.join(LOCAL_REGISTRY_PATH, latest_blob.name)
-            latest_blob.download_to_filename(latest_model_path_to_save)
-
-            latest_model = keras.models.load_model(latest_model_path_to_save)
-
-            print("✅ Latest model downloaded from cloud storage")
-
-            return latest_model
-        except:
-            print(f"\n❌ No model found in GCS bucket {BUCKET_NAME}")
-
-            return None
+def load_pred_to_bq(df):
+    clean_pred_data(df)
+    pass
 
 
-    # print(Fore.BLUE + f"\nLoad [{stage}] model from MLflow..." + Style.RESET_ALL)
+def get_pred_from_bq() -> pd.DataFrame:
+    pass
 
-    # # Load model from MLflow
-    # model = None
-    # mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    # client = MlflowClient()
-
-    # try:
-    #     model_versions = client.get_latest_versions(name=MLFLOW_MODEL_NAME, stages=[stage])
-    #     model_uri = model_versions[0].source
-
-    #     assert model_uri is not None
-    # except:
-    #     print(f"\n❌ No model found with name {MLFLOW_MODEL_NAME} in stage {stage}")
-
-    #     return None
-
-    # model = mlflow.tensorflow.load_model(model_uri=model_uri)
-
-    # print("✅ Model loaded from MLflow")
-
-    # return model
-
-def mlflow_transition_model(current_stage: str, new_stage: str) -> None:
-    """
-    Transition the latest model from the `current_stage` to the
-    `new_stage` and archive the existing model in `new_stage`
-    """
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-
-    client = MlflowClient()
-
-    version = client.get_latest_versions(name=MLFLOW_MODEL_NAME, stages=[current_stage])
-
-    if not version:
-        print(f"\n❌ No model found with name {MLFLOW_MODEL_NAME} in stage {current_stage}")
-        return None
-
-    client.transition_model_version_stage(
-        name=MLFLOW_MODEL_NAME,
-        version=version[0].version,
-        stage=new_stage,
-        archive_existing_versions=True
-    )
-
-    print(f"✅ Model {MLFLOW_MODEL_NAME} (version {version[0].version}) transitioned from {current_stage} to {new_stage}")
-
-    return None
+def clean_pred_data():
+    pass

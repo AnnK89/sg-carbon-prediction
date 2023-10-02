@@ -3,8 +3,10 @@ import os
 MODEL_TARGET = os.environ.get("MODEL_TARGET")
 PROJECT_ID = os.environ.get("PROJECT_ID")
 DATASET_ID = os.environ.get("DATASET_ID")
+PROCESSED_TABLE_ID = os.environ.get("PROCESSED_TABLE_ID")
+PREDICTIONS_TABLE_ID = os.environ.get("PREDICTIONS_TABLE_ID")
 BUCKET_NAME = os.environ.get("BUCKET_NAME")
-LOCAL_DATA_PATH = os.path.join(os.path.expanduser('~'), "code", "AnnK89","data")
+LOCAL_DATA_PATH = os.path.join(os.path.expanduser('~'), "code", "AnnK89", "data")
 LOCAL_REGISTRY_PATH = os.path.join(os.path.expanduser('~'),"code", "AnnK89", "data")
 MLFLOW_TRACKING_URI=os.environ.get("MLFLOW_TRACKING_URI")
 MLFLOW_EXPERIMENT=os.environ.get("MLFLOW_EXPERIMENT")
@@ -16,12 +18,19 @@ ELEC_EMISSION_FACTOR = 0.85
 # Petrol: Input Value(In Litres/Yr) X 2.296(Emission Factor) =  Output value in (Kg of CO2)
 # Diesel: Input Value(In Litres/Yr) X 2.653 (Emission Factor) =  Output value in (Kg of CO2)
 # LPG: Input Value(In Kg/Yr) X 2.983 (Emission Factor) =  Output value in (Kg of CO2)
+
 # Carbon emitted for vehicle = 4.6 tCO2 /year
+VEC_EMISSION_FACTOR = 4.6
 # Carbon emitted for population = 0.365 tCO2 /year
+POP_EMISSION_FACTOR = 0.365
 
 # Start and end year for dataset filter
 YEAR_START = 2005
 YEAR_END = 2021
+TRAIN_START = YEAR_START
+TRAIN_END = 2016
+TEST_START = 2017
+TEST_END = YEAR_END
 
 ##################  CONSTANTS  #####################
 DWELLING_TYPE_MAPPING = {
