@@ -1,23 +1,9 @@
 import params
 import pandas as pd
 import numpy as np
-import time
-import pickle
-import glob
 
 from pathlib import Path
-from colorama import Fore, Style
-from dateutil.parser import parse
-from tensorflow import keras
-
-import mlflow
-from mlflow.tracking import MlflowClient
-
 from google.cloud import bigquery, storage
-from params import *
-
-from google.auth.exceptions import DefaultCredentialsError
-from google.cloud.exceptions import NotFound
 
 class BigQueryDataRetriever():
     """
@@ -49,6 +35,57 @@ class BigQueryDataRetriever():
             return df
         except Exception as e:
             raise Exception(f"An error occurred while retrieving '{table_id}' dataset: {str(e)}")
+
+    def get_processed_from_bq(self):
+        return self.retrieve_data(params.PROCESSED_TABLE_ID, order_by='planning_area')
+
+    def get_predictions_from_bq(self):
+        return self.retrieve_data(params.PREDICTIONS_TABLE_ID, order_by='planning_area')
+
+class BigQueryDataLoader():
+    @staticmethod
+    def load_data(data: pd.DataFrame, table_id: str, truncate: bool) -> None:
+        """
+        Save the DataFrame to BigQuery.
+
+        Parameters
+        -------
+        data : DataFrame
+            The DataFrame to be saved.
+        table_id : str
+            The table ID to save data to.
+        truncate : bool
+            If True, empty the table before saving.
+
+        """
+        assert isinstance(data, pd.DataFrame)
+        full_table_name = f"{params.PROJECT_ID}.{params.DATASET_ID}.{table_id}"
+        data.columns = [f"_{column}" if not str(column)[0].isalpha() and not str(column)[0] == "_" else str(column) for column in data.columns]
+
+        client = bigquery.Client()
+
+        # Define write mode and schema
+        write_mode = "WRITE_TRUNCATE" if truncate else "WRITE_APPEND"
+        job_config = bigquery.LoadJobConfig(write_disposition=write_mode)
+
+        # Load data
+        job = client.load_table_from_dataframe(data, full_table_name, job_config=job_config)
+        result = job.result()
+
+        print(f"✅ Data saved to bigquery, with shape {data.shape}")
+
+    @staticmethod
+    def load_processed(data: pd.DataFrame, truncate: bool) -> None:
+        BigQueryDataLoader.load_data(data, params.PROCESSED_TABLE_ID, truncate)
+
+    def load_predictions(self, data: pd.DataFrame, truncate: bool) -> None:
+        data = self.clean_pred_data(data)
+        BigQueryDataLoader.load_data(data, params.PREDICTIONS_TABLE_ID, truncate)
+
+    @staticmethod
+    # Transform to required format for streamlit
+    def clean_pred_data(data: pd.DataFrame) -> pd.DataFrame:
+        return data
 
 
 # Preprocess consumption data from EMA
@@ -295,38 +332,6 @@ def clean_combined_data(df):
     df = df.sort_values(by='planning_area')
     return df
 
-def load_data_to_bq(data: pd.DataFrame, truncate: bool) -> None:
-    """
-    - Save the DataFrame to BigQuery
-    - Empty the table beforehand if `truncate` is True, append otherwise
-    """
-
-    assert isinstance(data, pd.DataFrame)
-    full_table_name = f"{params.PROJECT_ID}.{params.DATASET_ID}.{params.PROCESSED_TABLE_ID}"
-    data.columns = [f"_{column}" if not str(column)[0].isalpha() and not str(column)[0] == "_" else str(column) for column in data.columns]
-
-    client = bigquery.Client()
-
-    # Define write mode and schema
-    write_mode = "WRITE_TRUNCATE" if truncate else "WRITE_APPEND"
-    job_config = bigquery.LoadJobConfig(write_disposition=write_mode)
-
-    # Load data
-    job = client.load_table_from_dataframe(data, full_table_name, job_config=job_config)
-    result = job.result()
-
-    print(f"✅ Data saved to bigquery, with shape {data.shape}")
-
-def get_data_from_bq() -> pd.DataFrame:
-    """
-    - Load data from BigQuery server
-    """
-    df = BigQueryDataRetriever().retrieve_data(table_id=params.PROCESSED_TABLE_ID, order_by='planning_area')
-
-    print(f"✅ Data loaded, with shape {df.shape}")
-
-    return df
-
 def split_train_test_data(df: pd.DataFrame) -> tuple[np.array, np.array, np.array, np.array]:
     num_test_years = params.TEST_END - params.TEST_START + 1
     carbon_data = df.iloc[:, 1:-num_test_years].values
@@ -350,15 +355,3 @@ def split_train_test_data(df: pd.DataFrame) -> tuple[np.array, np.array, np.arra
     y_test = y[split:]
 
     return X_train, X_test, y_train, y_test
-
-
-def load_pred_to_bq(df):
-    clean_pred_data(df)
-    pass
-
-
-def get_pred_from_bq() -> pd.DataFrame:
-    pass
-
-def clean_pred_data():
-    pass

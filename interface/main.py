@@ -16,7 +16,7 @@ def preprocess() -> None:
     df = data.combine_clean_data()
 
     # Store processed data back to BigQuery
-    data.load_data_to_bq(df, truncate=True)
+    data.BigQueryDataLoader.load_processed(df, truncate=True)
 
     print("✅ preprocess() done \n")
 
@@ -31,7 +31,7 @@ def train(
     """
 
     # Download processed data from BigQuery table
-    df = data.get_data_from_bq()
+    df = data.BigQueryDataRetriever().get_processed_from_bq()
 
     X_train, X_test, y_train, y_test = data.split_train_test_data(df)
 
@@ -41,7 +41,7 @@ def train(
         model = model_carbon.initialize_model(input_shape=X_train.shape[1:])
 
     model = model_carbon.compile_model(model, learning_rate=learning_rate)
-    model = model_carbon.tune_model(X_train, X_test, y_train, y_test)
+    # model = model_carbon.tune_model(X_train, X_test, y_train, y_test)
     model, history = model_carbon.train_model(
         model, X_train, y_train,
         patience=patience,
@@ -70,7 +70,7 @@ def pred() -> Union[List[float], np.ndarray]:
     - Make a prediction using the latest trained model
     """
     # Download processed data from BigQuery table
-    df = data.get_data_from_bq()
+    df = data.BigQueryDataRetriever().get_processed_from_bq()
 
     model = registry.load_model()
 
@@ -84,6 +84,8 @@ def pred() -> Union[List[float], np.ndarray]:
     X_pred = np.array(X_pred).astype(np.float32)
 
     y_pred = model.predict(X_pred)
+
+    # data.BigQueryDataLoader().load_predictions(y_pred, truncate=True)
 
     print(f"✅ pred() done")
 
