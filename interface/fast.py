@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from interface.main import pred
+from interface.main import registry
 from ml_logic import data
 from params import *
 
 app = FastAPI()
-app.state.model = data.load_model()
+app.state.model = registry.load_model()
 
 # Allowing all middleware is optional, but good practice for dev purposes
 app.add_middleware(
@@ -33,23 +33,18 @@ def predict( ):
         FROM {PROJECT_ID}.{DATASET_ID}.processed_df
         ORDER BY planning_area ASC
     """
-    data_processed_cache_path = Path(LOCAL_DATA_PATH).joinpath("processed_df.csv")
+    df = data.BigQueryDataRetriever().get_processed_from_bq()
 
-    df = data.get_data_with_cache(
-        gcp_project=PROJECT_ID,
-        query=query,
-        cache_path=data_processed_cache_path,
-        data_has_header=False
-    )
     carbon_data = df.iloc[:, -12:].values
 
     X_pred=[]
     for i in range(0,len(carbon_data),4): #4 parameters per planning area
         X_pred.append(carbon_data[i:i+4].T)
 
-    X_pred = np.array(X_pred)
+    X_pred = np.array(X_pred).astype(np.float32)
 
-    y_pred = app.state.model.predict(X_pred)
+    model = registry.load_model()
+    y_pred = model.predict(X_pred).astype(np.float32)
 
     res={}
     res['5_years_prediction'] = json.dumps(np.array(y_pred).tolist())

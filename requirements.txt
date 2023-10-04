@@ -13,6 +13,8 @@ scikit-learn==1.2.1
 google-cloud-bigquery
 google-cloud-storage
 mlflow==2.1.1
+xgboost
+scikeras
 
 python-dotenv
 prefect==2.8.1
@@ -26,7 +28,10 @@ tensorflow==2.10.0; sys_platform != 'darwin' # Windows & Ubuntu Intel chips
 fastapi
 pytz
 uvicorn
+
+# app
 plotly
+streamlit
 
 # tests
 httpx
