@@ -1,8 +1,8 @@
 FROM python:3.8.12-slim
 
-WORKDIR /home/birdyzz/code/AnnK89/data
+WORKDIR /carbon
 
-COPY /gcp/le-wagon-bootcamp-396204-71c574a50ee8.json /home/birdyzz/code/AnnK89/data/le-wagon-bootcamp-396204-71c574a50ee8.json
+COPY /gcp/le-wagon-bootcamp-396204-71c574a50ee8.json /carbon/le-wagon-bootcamp-396204-71c574a50ee8.json
 
 # First, pip install dependencies
 COPY requirements.txt requirements.txt
@@ -20,7 +20,7 @@ RUN pip install .
 COPY Makefile Makefile
 
 # Set the GOOGLE_APPLICATION_CREDENTIALS environment variable
-ENV GOOGLE_APPLICATION_CREDENTIALS=/home/birdyzz/code/AnnK89/data/le-wagon-bootcamp-396204-71c574a50ee8.json
+ENV GOOGLE_APPLICATION_CREDENTIALS=/carbon/le-wagon-bootcamp-396204-71c574a50ee8.json
 
 # RUN make reset_local_files
 CMD uvicorn interface.fast:app --host 0.0.0.0 --port 8000 --reload

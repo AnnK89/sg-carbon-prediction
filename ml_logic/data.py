@@ -332,7 +332,7 @@ def clean_combined_data(df):
     df = df.sort_values(by='planning_area')
     return df
 
-def split_train_test_data(df: pd.DataFrame) -> tuple[np.array, np.array, np.array, np.array]:
+def split_train_test_data(df: pd.DataFrame):
     num_test_years = params.TEST_END - params.TEST_START + 1
     carbon_data = df.iloc[:, 1:-num_test_years].values
     target_data = df.iloc[:,-num_test_years:].values
