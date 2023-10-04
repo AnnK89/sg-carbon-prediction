@@ -1,99 +1,47 @@
 import numpy as np
 import pandas as pd
+from typing import List, Tuple, Union
 
-from pathlib import Path
-from colorama import Fore, Style
-from dateutil.parser import parse
-
-from google.cloud import bigquery
-from params import *
-from ml_logic import data
-from ml_logic import model_carbon
+from ml_logic import data, model_carbon, registry
+import params
 
 def preprocess() -> None:
     """
-    - Query the raw dataset from Le Wagon's BigQuery dataset
-    - Cache query result as a local CSV if it doesn't exist locally
+    - Query the raw dataset from BigQuery dataset
     - Process query data
-    - Store processed data on your personal BQ (truncate existing table if it exists)
-    - No need to cache processed data as CSV (it will be cached when queried back from BQ during training)
+    - Store processed data back to BigQuery
     """
 
-    print(Fore.MAGENTA + "\n ⭐️ Use case: preprocess" + Style.RESET_ALL)
-
-    # Query data from BigQuery using `get_data_with_cache` and combined for all parameters
+    # Query and process the raw dataset from BigQuery dataset
     df = data.combine_clean_data()
 
-    data.load_data_to_bq(
-    df,
-    gcp_project=PROJECT_ID,
-    bq_dataset=DATASET_ID,
-    table='processed_df',
-    truncate=True
-    )
+    # Store processed data back to BigQuery
+    data.BigQueryDataLoader.load_processed(df, truncate=True)
 
     print("✅ preprocess() done \n")
 
 def train(
-        num_years = 5, # predicting 5 years
-        learning_rate=0.0005,
-        patience = 5
-    ) -> float:
-
-    print(Fore.MAGENTA + "\n⭐️ Use case: train" + Style.RESET_ALL)
-    print(Fore.BLUE + "\nLoading preprocessed validation data..." + Style.RESET_ALL)
-
-    # Load processed data using `get_data_with_cache` in chronological order
-    # Try it out manually on console.cloud.google.com first!
-
-    # Below, our columns are called ['_0', '_1'....'_66'] on BQ, student's column names may differ
-    query = f"""
-        SELECT *
-        FROM {PROJECT_ID}.{DATASET_ID}.processed_df
-        ORDER BY planning_area ASC
+        learning_rate: float=0.0005,
+        patience: int = 5
+    ) -> tuple:
     """
-    data_processed_cache_path = Path(LOCAL_DATA_PATH).joinpath("processed_df.csv")
-    df = data.get_data_with_cache(
-        gcp_project=PROJECT_ID,
-        query=query,
-        cache_path=data_processed_cache_path,
-        data_has_header=False
-    )
+    - Download processed data from BigQuery table
+    - Train on the preprocessed dataset
+    - Store training results and model weights
+    """
 
-    # Process data
-    num_years = num_years
-    # Use previous years except latest years for sequence length
-    carbon_data = df.iloc[:, 1:-num_years].values # Exclude the 'City' column
-    target_data = df.iloc[:,-num_years:].values # last year as target
+    # Download processed data from BigQuery table
+    df = data.BigQueryDataRetriever().get_processed_from_bq()
 
-    # if sequence_length > carbon_data.shape[1] - 1:
-    #     sequence_length = carbon_data.shape[1] - 1
+    X_train, X_test, y_train, y_test = data.split_train_test_data(df)
 
-    X = []  # Input features
-    y = []  # Target values
-
-    # Create input features and target values
-    for i in range(0,len(carbon_data),4): #4 parameters per planning area
-        X.append(carbon_data[i:i+4].T)
-        y.append(target_data[i:i+4].T)
-
-    X = np.array(X)
-    y = np.array(y)
-
-    # Split data into training and testing sets
-    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    split = int(len(X) *  0.8)
-    X_train = X[:split]
-    X_test = X[split:]
-    y_train = y[:split]
-    y_test = y[split:]
-
-    model = data.load_model()
+    model = registry.load_model()
 
     if model is None:
         model = model_carbon.initialize_model(input_shape=X_train.shape[1:])
 
     model = model_carbon.compile_model(model, learning_rate=learning_rate)
+    # model = model_carbon.tune_model(X_train, X_test, y_train, y_test)
     model, history = model_carbon.train_model(
         model, X_train, y_train,
         patience=patience,
@@ -102,58 +50,43 @@ def train(
     mae = np.min(history.history['mae'])
     accuracy = np.max(history.history['accuracy'])
 
-    params = dict(
+    model_carbon.evaluate_model(model,X_test,y_test)
+
+    registry.save_model(model=model)
+
+    params_dict = dict(
         context="train",
         row_count=len(X_train),
     )
 
-    # Save results on the hard drive using taxifare.ml_logic.registry
-    data.save_results(params=params, metrics={'mae' : mae, 'accuracy' : accuracy})
-
-    # Save model weight on the hard drive (and optionally on GCS too!)
-    data.save_model(model=model)
-
-    # The latest model should be moved to staging
-    # data.mlflow_transition_model(current_stage="None", new_stage="Staging")
+    registry.save_results(params=params_dict, metrics={'mae' : mae, 'accuracy' : accuracy})
 
     print("✅ train() done \n")
 
-    model_carbon.evaluate_model(model,X_test,y_test)
+    return mae, accuracy
 
-    return mae,accuracy
-
-def pred():
-    print(Fore.MAGENTA + "\n ⭐️ Use case: pred" + Style.RESET_ALL)
-
-    query = f"""
-        SELECT *
-        FROM {PROJECT_ID}.{DATASET_ID}.processed_df
-        ORDER BY planning_area ASC
+def pred() -> Union[List[float], np.ndarray]:
     """
-    data_processed_cache_path = Path(LOCAL_DATA_PATH).joinpath("processed_df.csv")
-    df = data.get_data_with_cache(
-        gcp_project=PROJECT_ID,
-        query=query,
-        cache_path=data_processed_cache_path,
-        data_has_header=False
-    )
-    model = data.load_model()
+    - Make a prediction using the latest trained model
+    """
+    # Download processed data from BigQuery table
+    df = data.BigQueryDataRetriever().get_processed_from_bq()
 
-    carbon_data = df.iloc[:, -12:].values
+    model = registry.load_model()
+
+    num_train_year = params.TRAIN_END - params.TRAIN_START + 1
+    carbon_data = df.iloc[:, -num_train_year:].values
 
     X_pred=[]
-    for i in range(0,len(carbon_data),4): #4 parameters per planning area
-        X_pred.append(carbon_data[i:i+4].T)
+    for i in range(0,len(carbon_data), len(params.TRANSFORMER_MAP)):
+        X_pred.append(carbon_data[i:i+len(params.TRANSFORMER_MAP)].T)
 
-    X_pred = np.array(X_pred)
+    X_pred = np.array(X_pred).astype(np.float32)
 
     y_pred = model.predict(X_pred)
+
+    # data.BigQueryDataLoader().load_predictions(y_pred, truncate=True)
 
     print(f"✅ pred() done")
 
     return y_pred
-
-if __name__ == '__main__':
-    preprocess()
-    train()
-    pred()
