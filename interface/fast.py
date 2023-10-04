@@ -34,6 +34,7 @@ def predict( ):
         ORDER BY planning_area ASC
     """
     data_processed_cache_path = Path(LOCAL_DATA_PATH).joinpath("processed_df.csv")
+
     df = data.get_data_with_cache(
         gcp_project=PROJECT_ID,
         query=query,
@@ -50,7 +51,6 @@ def predict( ):
 
     y_pred = app.state.model.predict(X_pred)
 
-    print(y_pred)
     res={}
     res['5_years_prediction'] = json.dumps(np.array(y_pred).tolist())
 
