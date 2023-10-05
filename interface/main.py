@@ -3,7 +3,8 @@ import pandas as pd
 from typing import List, Tuple, Union
 
 from ml_logic import data, model_carbon, registry
-import params
+from ml_logic.registry import mlflow_run,mlflow_transition_model
+from params import *
 
 def preprocess() -> None:
     """
@@ -20,6 +21,7 @@ def preprocess() -> None:
 
     print("✅ preprocess() done \n")
 
+@mlflow_run
 def train(
         learning_rate: float=0.0005,
         patience: int = 5
@@ -61,7 +63,11 @@ def train(
 
     registry.save_results(params=params_dict, metrics={'mae' : mae, 'accuracy' : accuracy})
 
-    print("✅ train() done \n")
+    # The latest model should be moved to staging
+    if MODEL_TARGET == 'mlflow':
+        mlflow_transition_model(current_stage="None", new_stage="Staging")
+
+    print(f"✅ train() done with mae = {mae} and accuracy = {accuracy} \n")
 
     return mae, accuracy
 
@@ -74,12 +80,12 @@ def pred() -> Union[List[float], np.ndarray]:
 
     model = registry.load_model()
 
-    num_train_year = params.TRAIN_END - params.TRAIN_START + 1
+    num_train_year = TRAIN_END - TRAIN_START + 1
     carbon_data = df.iloc[:, -num_train_year:].values
 
     X_pred=[]
-    for i in range(0,len(carbon_data), len(params.TRANSFORMER_MAP)):
-        X_pred.append(carbon_data[i:i+len(params.TRANSFORMER_MAP)].T)
+    for i in range(0,len(carbon_data), len(TRANSFORMER_MAP)):
+        X_pred.append(carbon_data[i:i+len(TRANSFORMER_MAP)].T)
 
     X_pred = np.array(X_pred).astype(np.float32)
 
@@ -90,3 +96,8 @@ def pred() -> Union[List[float], np.ndarray]:
     print(f"✅ pred() done")
 
     return y_pred
+
+if __name__ == "__main__":
+    preprocess()
+    train()
+    pred()

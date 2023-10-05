@@ -1,5 +1,10 @@
 import os
 ##################  VARIABLES  ##################
+GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+GCR_IMAGE = os.environ.get("GCR_IMAGE")
+GCR_REGION = os.environ.get("GCR_REGION")
+GCP_REGION = os.environ.get("GCP_REGION")
+GCR_MEMORY = os.environ.get("GCR_MEMORY")
 MODEL_TARGET = os.environ.get("MODEL_TARGET")
 PROJECT_ID = os.environ.get("PROJECT_ID")
 DATASET_ID = os.environ.get("DATASET_ID")

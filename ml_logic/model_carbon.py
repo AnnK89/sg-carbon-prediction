@@ -10,7 +10,6 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Normalization, Dense, SimpleRNN, Reshape
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.model_selection import GridSearchCV
-from scikeras.wrappers import KerasClassifier, KerasRegressor
 from ml_logic import data
 from tensorflow.keras.optimizers.legacy import Adam as LegacyAdam
 
