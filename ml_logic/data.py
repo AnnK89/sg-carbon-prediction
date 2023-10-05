@@ -85,7 +85,26 @@ class BigQueryDataLoader():
     @staticmethod
     # Transform to required format for streamlit
     def clean_pred_data(data: pd.DataFrame) -> pd.DataFrame:
-        return data
+        #preparing list of area and years for 5 years
+        frame_area = []
+        frame_year = []
+        for i in range (2022,2022+5):
+            for j in params.PLANNING_AREA:
+                frame_area.append(j)
+                frame_year.append(i)
+        #calculating total carbon (4t/human/year and 4.6t/vehicle/year)
+        carbon_data = data
+        carbon_data[2022] = carbon_data[0].apply(lambda x : x[0]+x[1]+x[2]*4+x[3]*4.6)
+        carbon_data[2023] = carbon_data[1].apply(lambda x : x[0]+x[1]+x[2]*4+x[3]*4.6)
+        carbon_data[2024] = carbon_data[2].apply(lambda x : x[0]+x[1]+x[2]*4+x[3]*4.6)
+        carbon_data[2025] = carbon_data[3].apply(lambda x : x[0]+x[1]+x[2]*4+x[3]*4.6)
+        carbon_data[2026] = carbon_data[4].apply(lambda x : x[0]+x[1]+x[2]*4+x[3]*4.6)
+
+        #concat 2022-2026 total carbon vertically to merge into final dataframe
+        combined_df = pd.concat([carbon_data.iloc[:,5],carbon_data.iloc[:,6],carbon_data.iloc[:,7],carbon_data.iloc[:,8],carbon_data.iloc[:,9]],axis=0)
+        final_df = pd.DataFrame({'plan_area':frame_area,'year':frame_year,'carbon_total':combined_df}).reset_index(drop=True).sort_values(by=['plan_area','year'])
+
+        return final_df
 
 
 # Preprocess consumption data from EMA
