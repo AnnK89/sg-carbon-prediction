@@ -43,8 +43,7 @@ def predict( ):
 
     X_pred = np.array(X_pred).astype(np.float32)
 
-    model = registry.load_model()
-    y_pred = model.predict(X_pred).astype(np.float32)
+    y_pred = app.state.model.predict(X_pred).astype(np.float32)
 
     res={}
     res['5_years_prediction'] = json.dumps(np.array(y_pred).tolist())

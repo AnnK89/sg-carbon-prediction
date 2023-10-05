@@ -8,6 +8,7 @@ import glob
 from pathlib import Path
 from colorama import Fore, Style
 from dateutil.parser import parse
+import tensorflow
 from tensorflow import keras
 
 import mlflow
@@ -166,7 +167,7 @@ def load_model(stage="Production"):
 
             return None
 
-        model = mlflow.tensorflow.load_model(model_uri=model_uri)
+        model = mlflow.tensorflow.load_model(model_uri)
 
         print("✅ Model loaded from MLflow")
         return model

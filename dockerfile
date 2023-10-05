@@ -1,4 +1,4 @@
-FROM python:3.8.12-slim
+FROM tensorflow/tensorflow
 
 WORKDIR /carbon
 
@@ -6,7 +6,7 @@ COPY /gcp/le-wagon-bootcamp-396204-71c574a50ee8.json /carbon/le-wagon-bootcamp-3
 
 # First, pip install dependencies
 COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt --ignore-installed
 
 # Then only, install taxifare!
 COPY interface interface
