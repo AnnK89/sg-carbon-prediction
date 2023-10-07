@@ -9,8 +9,9 @@ st.write('Carbon Emission of Different Areas in Singapore')
 data = requests.get("https://carbonpredictionarbon-nmh4nih7qa-as.a.run.app/predict")
 data = pd.DataFrame(json.loads(data.json()['5_years_prediction']))
 
-df = BigQueryDataLoader.clean_pred_data(data)
 areas_map = json.load(open("MasterPlan2019PlanningAreaBoundaryNoSea.geojson","r"))
+df = BigQueryDataLoader.clean_pred_data(data).reset_index(drop=True)
+df['plan_area'] = df['plan_area'].apply(lambda x : x.upper())
 
 fig=px.choropleth(df,
                   geojson=areas_map,
