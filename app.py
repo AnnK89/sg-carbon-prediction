@@ -20,13 +20,15 @@ fig=px.choropleth(df,
                   locations='plan_area',
                   animation_frame = 'year',
                   color='carbon_total',
-                  color_continuous_scale='dense', 
+                  color_continuous_scale=[[0, 'rgb(240,240,240,0.6)'], 
+                                          [0.5, 'rgb(255,0,0)'],
+                                          [0.75, 'rgb(200,0,0)'],
+                                          [0.80, 'rgb(150,0,0)'],
+                                          [0.95, 'rgb(100,0,0)'],
+                                          [1, 'rgb(50,0,0)']], 
                   range_color=(df['carbon_total'].min(), df['carbon_total'].max()),
                   )
 fig.update_geos(fitbounds="locations", visible=False)
 fig.update_layout(height=500, width=800)
 
 st.plotly_chart(fig, use_container_width=False, sharing="streamlit", theme="streamlit")
-
-
-
