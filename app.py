@@ -60,11 +60,49 @@ fig_bar = px.bar(df,
 
 # Update chart layout
 fig_bar.update_layout(
-    height=600,  # Adjust the height as needed
+    height=600,width=1000,  # Adjust the height as needed
     margin=dict(l=50, r=50, b=100, t=50),
+    updatemenus=[
+        {
+            'buttons': [
+                {
+                    'args': [None, {'frame': {'duration': 500, 'redraw': True}, 'fromcurrent': True}],
+                    'label': 'Play',
+                    'method': 'animate',
+                },
+                {
+                    'args': [[None], {'frame': {'duration': 0, 'redraw': True}, 'mode': 'immediate', 'transition': {'duration': 0}}],
+                    'label': 'Stop',
+                    'method': 'animate',
+                },
+            ],
+            'direction': 'left',
+            'pad': {'r': 10, 't': 87},
+            'showactive': False,
+            'type': 'buttons',
+            'x': 0.1,
+            'xanchor': 'right',
+            'y': -0.4,
+            'yanchor': 'top',
+        }
+    ],
+    sliders=[{
+        'active': 0,
+        'yanchor': 'top',
+        'xanchor': 'left',
+        'currentvalue': {
+            'font': {'size': 12},
+            'prefix': 'Year:',
+            'visible': True,
+            'xanchor': 'left',
+        },
+        'transition': {'duration': 300, 'easing': 'cubic-in-out'},
+        'pad': {'b': 10, 't': 50},
+        'len': 0.9,
+        'x': 0.1,
+        'y': -0.5,
+    }],
 )
-
-
 
 # Streamlit widget to switch between chart types
 chart_type = st.radio("Select Chart Type", ["Choropleth Map","Bar Chart"])
