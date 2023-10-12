@@ -25,6 +25,7 @@ fig=px.choropleth(df,
                   locations='plan_area',
                   animation_frame = 'year',
                   color='carbon_total',
+
                   color_continuous_scale=[[0, '#f0f0f0'],
                                           [0.1, '#f0f0f0'],
                                           [0.3,'#008000'],
@@ -34,10 +35,12 @@ fig=px.choropleth(df,
                                             [0.95, '#ff0000'],
                                             [1, '#800080']],
                   color_continuous_midpoint=df['carbon_total'].mean(),
+
                   range_color=(df['carbon_total'].min(), df['carbon_total'].max()),
                   )
 fig.update_geos(fitbounds="locations", visible=False)
 fig.update_layout(height=500, width=800)
+
 
 # Create animated bar chart
 fig_bar = px.bar(df,
@@ -111,3 +114,4 @@ if chart_type == "Bar Chart":
     st.plotly_chart(fig_bar, use_container_width=False, sharing="streamlit", theme="streamlit", animation_duration=animation_duration)
 elif chart_type == "Choropleth Map":
     st.plotly_chart(fig, use_container_width=False, sharing="streamlit", theme="streamlit", animation_duration=animation_duration)
+
